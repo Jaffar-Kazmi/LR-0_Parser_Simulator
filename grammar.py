@@ -1,0 +1,99 @@
+from dataclasses import dataclass, field
+
+@dataclass(frozen=True)
+class Production:
+    number: int
+    lhs: str
+    rhs: tuple[str, ...]
+
+    def __str__(self):
+        rhs_text = ' '.join(self.rhs) if self.rhs else 'ε'
+        return f"{self.number}. {self.lhs} -> {rhs_text}"
+    
+@dataclass
+class Grammar:
+    start_symbol: str = ""
+    augmented_start_symbol: str = ""
+    productions: list[Production] = field(default_factory=list)
+    nonTerminals: set[str] = field(default_factory=set)
+    terminals: set[str] = field(default_factory=set)
+
+    def __str__(self):
+        lines = [
+            f"Start Symbol: {self.start_symbol}",
+            f"Non-terminals: {sorted(self.nonTerminals)}",
+            f"Terminals: {sorted(self.terminals)}",
+            "Productions:"
+        ]
+        lines.extend(str(p) for p in self.productions)
+        return '\n'.join(lines)
+
+def parse_grammar(text: str):
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    if not lines:
+        raise ValueError("Input grammar is empty.")
+    
+    raw_rules = []
+    nonTerminals = set()
+    terminals = set()
+
+    for line in lines:
+        if '->' not in line:
+            raise ValueError(f"Invalid production rule: '{line}'. Expected '->' separator.")
+        lhs, rhs = line.split('->', 1)
+        if not lhs.strip():
+            raise ValueError(f"Invalid production rule: '{line}'. Left-hand side cannot be empty.")
+        nonTerminals.add(lhs.strip())
+        raw_rules.append((lhs.strip(), rhs.strip()))
+
+    productions = []
+    prod_number = 0
+
+    for lhs, rhs_part in raw_rules:
+        alternatives = [alt.strip() for alt in rhs_part.split("|")]
+        for alt in alternatives:
+            if alt in ("", "ε", "epsilon"):
+                rhs = tuple()
+            else:
+                rhs = tuple(alt.split())
+            productions.append(Production(prod_number, lhs, rhs))
+            prod_number += 1
+
+    for prod in productions:
+        for symbol in prod.rhs:
+            if symbol not in nonTerminals:
+                terminals.add(symbol)     
+
+    grammar = Grammar(
+        start_symbol=productions[0].lhs,
+        productions=productions,
+        nonTerminals=nonTerminals,
+        terminals=terminals
+    )
+
+    return grammar   
+
+
+if __name__ == "__main__":
+    grammar = """
+S -> C C
+C -> c C | d
+"""
+
+    g = parse_grammar(grammar)
+    print(g)
+
+# p1 = Production(1, 'S', ('A', 'B'))
+# print(p1)  # Output: 1. S -> A B
+# p2 = Production(2, 'A', ('a',))
+# print(p2)  # Output: 2. A -> a
+# p3 = Production(3, 'B', ())
+# print(p3)  # Output: 3. B -> ε
+
+# g = Grammar(
+#     start_symbol='S',
+#     productions=[p1, p2, p3],
+#     nonTerminals={'S', 'A', 'B'},
+#     terminals={'a'}
+# )
+# print(g)
