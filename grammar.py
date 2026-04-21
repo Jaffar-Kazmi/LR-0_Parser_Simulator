@@ -159,8 +159,101 @@ def goto(items, symbol, grammar):
     return closure(moved, grammar)
 
 def get_all_symbols(grammar):
-    return list(grammar.nonterminals) + list(grammar.terminals)
+    return list(grammar.nonTerminals) + list(grammar.terminals)
 
+def build_dfa(grammar):
+    states = []
+    transitions = {}
+
+    start_item = get_start_item(grammar)
+    start_state = frozenset(closure({start_item}, grammar))
+
+    states.append(start_state)
+
+    i = 0
+    while i < len(states):
+        state = states[i]
+
+        for symbol in get_all_symbols(grammar):
+            next_state = frozenset(goto(state, symbol, grammar))
+
+            if not next_state:
+                continue
+
+            if next_state not in states:
+                states.append(next_state)
+
+            next_index = states.index(next_state)
+            transitions[(i, symbol)] = next_index
+
+        i += 1
+
+    return states, transitions
+
+def print_state(state, index):
+    print(f"\nI{index}:")
+    for item in sorted(state, key=lambda x: (x.prod_num, x.dot)):
+        print(item)
+
+
+def print_dfa(states, transitions):
+    for i, state in enumerate(states):
+        print_state(state, i)
+
+    print("\nTransitions:")
+    for (from_state, symbol), to_state in sorted(transitions.items()):
+        print(f"I{from_state} -- {symbol} --> I{to_state}")
+
+def build_parsing_table(grammar, states, transitions):
+    action = {}
+    goto_table = {}
+    conflicts = []
+
+    terminals = list(grammar.terminals) + ["$"]
+
+    for (state_index, symbol), next_state in transitions.items():
+        if symbol in grammar.terminals:
+            key = (state_index, symbol)
+            value = f"s{next_state}"
+
+            if key in action and action[key] != value:
+                conflicts.append((key, action[key], value))
+            action[key] = value
+
+        elif symbol in grammar.nonTerminals:
+            goto_table[(state_index, symbol)] = next_state
+
+    for i, state in enumerate(states):
+        for item in state:
+            if item.is_complete():
+                if item.lhs == grammar.augmented_start_symbol:
+                    key = (i, "$")
+                    value = "acc"
+                    if key in action and action[key] != value:
+                        conflicts.append((key, action[key], value))
+                    action[key] = value
+                else:
+                    value = f"r{item.prod_num}"
+                    for terminal in terminals:
+                        key = (i, terminal)
+                        if key in action and action[key] != value:
+                            conflicts.append((key, action[key], value))
+                        action[key] = value
+
+    return action, goto_table, conflicts
+
+def print_parsing_table(grammar, action, goto_table):
+    terminals = sorted(grammar.terminals) + ["$"]
+    nonterminals = sorted(grammar.nonTerminals - {grammar.augmented_start_symbol})
+
+    print("\nACTION TABLE:")
+    for state, symbol in sorted(action):
+        print(f"ACTION[{state}, {symbol}] = {action[(state, symbol)]}")
+
+    print("\nGOTO TABLE:")
+    for state, symbol in sorted(goto_table):
+        print(f"GOTO[{state}, {symbol}] = {goto_table[(state, symbol)]}")
+    
 if __name__ == "__main__":
     sample_grammar = """
     S -> C C
@@ -170,22 +263,36 @@ if __name__ == "__main__":
     grammar = parse_grammar(sample_grammar)
     grammar = augment_grammar(grammar)
 
-    start_item = get_start_item(grammar)
-    state0 = closure({start_item}, grammar)
+    # start_item = get_start_item(grammar)
+    # state0 = closure({start_item}, grammar)
 
-    print_items(state0, "I0")
+    # print_items(state0, "I0")
 
-    state_on_S = goto(state0, "S", grammar)
-    print_items(state_on_S, "goto(I0, S)")
+    # state_on_S = goto(state0, "S", grammar)
+    # print_items(state_on_S, "goto(I0, S)")
 
-    state_on_C = goto(state0, "C", grammar)
-    print_items(state_on_C, "goto(I0, C)")
+    # state_on_C = goto(state0, "C", grammar)
+    # print_items(state_on_C, "goto(I0, C)")
 
-    state_on_c = goto(state0, "c", grammar)
-    print_items(state_on_c, "goto(I0, c)")
+    # state_on_c = goto(state0, "c", grammar)
+    # print_items(state_on_c, "goto(I0, c)")
 
-    state_on_d = goto(state0, "d", grammar)
-    print_items(state_on_d, "goto(I0, d)")
+    # state_on_d = goto(state0, "d", grammar)
+    # print_items(state_on_d, "goto(I0, d)")
+
+
+    states, transitions = build_dfa(grammar)
+    # print_dfa(states, transitions)
+
+    action, goto_table, conflicts = build_parsing_table(grammar, states, transitions)
+    print_parsing_table(grammar, action, goto_table)
+
+    print("\nConflicts:")
+    if conflicts:
+        for c in conflicts:
+            print(c)
+    else:
+        print("No conflicts. Grammar is LR(0).")
 
 # p1 = Production(1, 'S', ('A', 'B'))
 # print(p1)  # Output: 1. S -> A B
