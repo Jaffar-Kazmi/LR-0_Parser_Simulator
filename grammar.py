@@ -253,7 +253,69 @@ def print_parsing_table(grammar, action, goto_table):
     print("\nGOTO TABLE:")
     for state, symbol in sorted(goto_table):
         print(f"GOTO[{state}, {symbol}] = {goto_table[(state, symbol)]}")
-    
+
+def parse_string(grammar, action, goto_table, input_text):
+    tokens = input_text.split()
+    tokens.append("$")
+
+    stack = [0]
+    steps = []
+
+    step_no = 1
+
+    while True:
+        state = stack[-1]
+        current = tokens[0]
+
+        act = action.get((state, current), "")
+
+        steps.append({
+            "step": step_no,
+            "stack": " ".join(map(str, stack)),
+            "input": " ".join(tokens),
+            "action": act if act else "error"
+        })
+
+        if not act:
+            return False, steps
+
+        if act == "acc":
+            return True, steps
+
+        if act.startswith("s"):
+            next_state = int(act[1:])
+            stack.append(current)
+            stack.append(next_state)
+            tokens.pop(0)
+
+        elif act.startswith("r"):
+            prod_num = int(act[1:])
+            prod = grammar.productions[prod_num]
+
+            pop_count = 2 * len(prod.rhs)
+            for _ in range(pop_count):
+                stack.pop()
+
+            top_state = stack[-1]
+            stack.append(prod.lhs)
+
+            next_state = goto_table.get((top_state, prod.lhs))
+            if next_state is None:
+                steps.append({
+                    "step": step_no + 1,
+                    "stack": " ".join(map(str, stack)),
+                    "input": " ".join(tokens),
+                    "action": "error"
+                })
+                return False, steps
+
+            stack.append(next_state)
+
+        else:
+            return False, steps
+
+        step_no += 1
+ 
 if __name__ == "__main__":
     sample_grammar = """
     S -> C C
@@ -293,6 +355,14 @@ if __name__ == "__main__":
             print(c)
     else:
         print("No conflicts. Grammar is LR(0).")
+
+    print("\n--- PARSE TEST ---")
+    accepted, steps = parse_string(grammar, action, goto_table, "d d")
+
+    for row in steps:
+        print(row)
+
+    print("\nResult:", "ACCEPTED" if accepted else "REJECTED")
 
 # p1 = Production(1, 'S', ('A', 'B'))
 # print(p1)  # Output: 1. S -> A B
