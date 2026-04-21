@@ -73,15 +73,36 @@ def parse_grammar(text: str):
 
     return grammar   
 
+def augment_grammar(grammar):
+    new_start = grammar.start_symbol + "'"
+
+    while new_start in grammar.nonTerminals:
+        new_start += "'"
+
+    new_production = Production(0, new_start, (grammar.start_symbol,))
+
+    return Grammar(
+        start_symbol=grammar.start_symbol,
+        augmented_start_symbol=new_start,
+        productions=[new_production] + grammar.productions,
+        nonTerminals=grammar.nonTerminals.union({new_start}),
+        terminals=grammar.terminals
+    )
+
+
 
 if __name__ == "__main__":
-    grammar = """
-S -> C C
-C -> c C | d
-"""
+    sample_grammar = """
+    S -> C C
+    C -> c C | d
+    """
 
-    g = parse_grammar(grammar)
-    print(g)
+    grammar = parse_grammar(sample_grammar)
+    print("Original Grammar:")
+    print(grammar)
+    grammar = augment_grammar(grammar)
+    print("\nAugmented Grammar:")
+    print(grammar)
 
 # p1 = Production(1, 'S', ('A', 'B'))
 # print(p1)  # Output: 1. S -> A B
