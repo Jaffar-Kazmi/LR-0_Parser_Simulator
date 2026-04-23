@@ -33,6 +33,8 @@ class LR0App:
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
 
+        self.drag_data = {"x": 0, "y": 0, "state": None}
+
         self.grammar = None
         self.states = None
         self.transitions = None
@@ -71,7 +73,7 @@ class LR0App:
         dfa_canvas_frame = tk.Frame(dfa_frame)
         dfa_canvas_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
-        self.dfa_canvas = tk.Canvas(dfa_canvas_frame, bg="white", height=750)
+        self.dfa_canvas = tk.Canvas(dfa_canvas_frame, bg="white", height=1050)
         self.dfa_canvas.grid(row=0, column=0, sticky="nsew")
 
         self.dfa_vscroll = tk.Scrollbar(dfa_canvas_frame, orient="vertical", command=self.dfa_canvas.yview)
@@ -87,6 +89,12 @@ class LR0App:
 
         dfa_canvas_frame.grid_rowconfigure(0, weight=1)
         dfa_canvas_frame.grid_columnconfigure(0, weight=1)
+        
+        table_frame = tk.LabelFrame(parent, text="LR(0) Parsing Table")
+        table_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.table_tree = ttk.Treeview(table_frame, show="headings")
+        self.table_tree.pack(fill="both", expand=True, padx=5, pady=5)
         
         output_frame = tk.LabelFrame(parent, text="Output")
         output_frame.pack(fill="x", padx=10, pady=10)
@@ -153,7 +161,7 @@ class LR0App:
         for (from_state, symbol), to_state in self.transitions.items():
             x1, y1 = self.state_positions[from_state]
             x2, y2 = self.state_positions[to_state]
-        
+
             if from_state == to_state:
                 self.dfa_canvas.create_arc(
                     x1 + 80, y1 - 30, x1 + 180, y1 + 40,
@@ -163,13 +171,13 @@ class LR0App:
             else:
                 sx, sy = self.get_box_edge_point(x1, y1, x2, y2, box_w, box_h)
                 tx, ty = self.get_box_edge_point(x2, y2, x1, y1, box_w, box_h)
-        
+
                 self.dfa_canvas.create_line(
                     sx, sy, tx, ty,
                     arrow=tk.LAST,
                     width=2
                 )
-        
+
                 mx = (sx + tx) / 2
                 my = (sy + ty) / 2
                 self.dfa_canvas.create_rectangle(mx - 12, my - 10, mx + 12, my + 10, fill="white", outline="")
@@ -177,19 +185,22 @@ class LR0App:
 
         for i, state in enumerate(self.states):
             x, y = self.state_positions[i]
+            tag = f"state_{i}"
 
             rect = self.dfa_canvas.create_rectangle(
                 x, y, x + box_w, y + box_h,
                 outline="black",
                 width=2,
-                fill="lightgray"
+                fill="lightgray",
+                tags=(tag,)
             )
 
             self.dfa_canvas.create_text(
                 x + 10, y + 10,
                 text=f"I{i}",
                 anchor="nw",
-                font=("Arial", 11, "bold")
+                font=("Arial", 11, "bold"),
+                tags=(tag,)
             )
 
             items = sorted(state, key=lambda it: (it.prod_num, it.dot))
@@ -200,10 +211,14 @@ class LR0App:
                 text=text,
                 anchor="nw",
                 font=("Consolas", 9),
-                justify="left"
+                justify="left",
+                tags=(tag,)
             )
 
             self.state_circles[i] = rect
+
+            self.dfa_canvas.tag_bind(tag, "<ButtonPress-1>", self.start_drag)
+            self.dfa_canvas.tag_bind(tag, "<B1-Motion>", self.drag_state)
 
     def highlight_state(self, state_index):
         for circle in self.state_circles.values():
@@ -230,6 +245,7 @@ class LR0App:
             )
 
             self.draw_dfa()
+            self.show_parsing_table()
 
             self.output_text.delete("1.0", tk.END)
 
@@ -243,14 +259,6 @@ class LR0App:
             self.output_text.insert(tk.END, "TRANSITIONS:\n")
             for (from_state, symbol), to_state in sorted(self.transitions.items()):
                 self.output_text.insert(tk.END, f"I{from_state} -- {symbol} --> I{to_state}\n")
-
-            self.output_text.insert(tk.END, "\nACTION TABLE:\n")
-            for key in sorted(self.action_table):
-                self.output_text.insert(tk.END, f"ACTION{key} = {self.action_table[key]}\n")
-
-            self.output_text.insert(tk.END, "\nGOTO TABLE:\n")
-            for key in sorted(self.goto_table):
-                self.output_text.insert(tk.END, f"GOTO{key} = {self.goto_table[key]}\n")
 
             self.output_text.insert(tk.END, "\nCONFLICTS:\n")
             if conflicts:
@@ -333,8 +341,58 @@ class LR0App:
                 px = cx1 - dx * (box_h / 2) / abs(dy)
 
         return px, py
+    
+    def show_parsing_table(self):
+        for item in self.table_tree.get_children():
+            self.table_tree.delete(item)
+
+        terminals = sorted(self.grammar.terminals) + ["$"]
+        nonterminals = sorted(self.grammar.nonTerminals - {self.grammar.augmented_start_symbol})
+
+        columns = ["State"] + terminals + nonterminals
+        self.table_tree["columns"] = columns
+
+        for col in columns:
+            self.table_tree.heading(col, text=col)
+            self.table_tree.column(col, width=80, anchor="center")
+
+        for i in range(len(self.states)):
+            row = [str(i)]
+
+            for t in terminals:
+                row.append(self.action_table.get((i, t), ""))
+
+            for nt in nonterminals:
+                row.append(self.goto_table.get((i, nt), ""))
+
+            self.table_tree.insert("", tk.END, values=row)
+
+    def start_drag(self, event):
+        self.drag_data["x"] = event.x
+        self.drag_data["y"] = event.y
+
+        current = self.dfa_canvas.find_withtag("current")
+        if current:
+            tags = self.dfa_canvas.gettags(current[0])
+            for tag in tags:
+                if tag.startswith("state_"):
+                    self.drag_data["state"] = tag
+                    break
 
 
+    def drag_state(self, event):
+        tag = self.drag_data["state"]
+        if not tag:
+            return
+    
+        dx = event.x - self.drag_data["x"]
+        dy = event.y - self.drag_data["y"]
+    
+        self.dfa_canvas.move(tag, dx, dy)
+    
+        self.drag_data["x"] = event.x
+        self.drag_data["y"] = event.y
+    
 if __name__ == "__main__":
     root = tk.Tk()
     app = LR0App(root)
