@@ -38,7 +38,7 @@ def goto(items, symbol, grammar):
     return closure(moved, grammar)
 
 def get_all_symbols(grammar):
-    return list(grammar.nonTerminals) + list(grammar.terminals)
+    return sorted(grammar.nonTerminals) + sorted(grammar.terminals)
 
 def build_dfa(grammar):
     states = []
@@ -150,6 +150,7 @@ def parse_string(grammar, action, goto_table, input_text):
 
         steps.append({
             "step": step_no,
+            "state": state,
             "stack": " ".join(map(str, stack)),
             "input": " ".join(tokens),
             "action": act if act else "error"

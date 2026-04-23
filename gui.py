@@ -33,13 +33,15 @@ class LR0App:
         self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
 
-        self.build_ui()
-
         self.grammar = None
         self.states = None
         self.transitions = None
         self.action_table = None
         self.goto_table = None
+        self.state_positions = {}
+        self.state_circles = {}
+
+        self.build_ui()
 
     def on_canvas_configure(self, event):
         self.canvas.itemconfig(self.canvas_window, width=event.width)
@@ -63,6 +65,29 @@ class LR0App:
         )
         self.build_button.pack(side="left", padx=5)
 
+        dfa_frame = tk.LabelFrame(parent, text="DFA Diagram")
+        dfa_frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        dfa_canvas_frame = tk.Frame(dfa_frame)
+        dfa_canvas_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        self.dfa_canvas = tk.Canvas(dfa_canvas_frame, bg="white", height=750)
+        self.dfa_canvas.grid(row=0, column=0, sticky="nsew")
+
+        self.dfa_vscroll = tk.Scrollbar(dfa_canvas_frame, orient="vertical", command=self.dfa_canvas.yview)
+        self.dfa_vscroll.grid(row=0, column=1, sticky="ns")
+
+        self.dfa_hscroll = tk.Scrollbar(dfa_canvas_frame, orient="horizontal", command=self.dfa_canvas.xview)
+        self.dfa_hscroll.grid(row=1, column=0, sticky="ew")
+
+        self.dfa_canvas.configure(
+            yscrollcommand=self.dfa_vscroll.set,
+            xscrollcommand=self.dfa_hscroll.set
+        )
+
+        dfa_canvas_frame.grid_rowconfigure(0, weight=1)
+        dfa_canvas_frame.grid_columnconfigure(0, weight=1)
+        
         output_frame = tk.LabelFrame(parent, text="Output")
         output_frame.pack(fill="x", padx=10, pady=10)
 
@@ -101,6 +126,92 @@ class LR0App:
 
         self.steps_tree.pack(fill="both", expand=True, padx=10, pady=10)
 
+    def draw_dfa(self):
+        self.dfa_canvas.delete("all")
+
+        if not self.states:
+            return
+
+        self.state_positions = {}
+        self.state_boxes = {}
+
+        start_x = 60
+        start_y = 60
+        gap_x = 280
+        gap_y = 220
+
+        box_w = 240
+        box_h = 160
+
+        for i in range(len(self.states)):
+            row = i // 3
+            col = i % 3
+            x = start_x + col * gap_x
+            y = start_y + row * gap_y
+            self.state_positions[i] = (x, y)
+
+        for (from_state, symbol), to_state in self.transitions.items():
+            x1, y1 = self.state_positions[from_state]
+            x2, y2 = self.state_positions[to_state]
+        
+            if from_state == to_state:
+                self.dfa_canvas.create_arc(
+                    x1 + 80, y1 - 30, x1 + 180, y1 + 40,
+                    start=0, extent=300, style="arc", width=2
+                )
+                self.dfa_canvas.create_text(x1 + 130, y1 - 20, text=symbol, fill="blue")
+            else:
+                sx, sy = self.get_box_edge_point(x1, y1, x2, y2, box_w, box_h)
+                tx, ty = self.get_box_edge_point(x2, y2, x1, y1, box_w, box_h)
+        
+                self.dfa_canvas.create_line(
+                    sx, sy, tx, ty,
+                    arrow=tk.LAST,
+                    width=2
+                )
+        
+                mx = (sx + tx) / 2
+                my = (sy + ty) / 2
+                self.dfa_canvas.create_rectangle(mx - 12, my - 10, mx + 12, my + 10, fill="white", outline="")
+                self.dfa_canvas.create_text(mx, my, text=symbol, fill="blue")
+
+        for i, state in enumerate(self.states):
+            x, y = self.state_positions[i]
+
+            rect = self.dfa_canvas.create_rectangle(
+                x, y, x + box_w, y + box_h,
+                outline="black",
+                width=2,
+                fill="lightgray"
+            )
+
+            self.dfa_canvas.create_text(
+                x + 10, y + 10,
+                text=f"I{i}",
+                anchor="nw",
+                font=("Arial", 11, "bold")
+            )
+
+            items = sorted(state, key=lambda it: (it.prod_num, it.dot))
+            text = "\n".join(str(item) for item in items)
+
+            self.dfa_canvas.create_text(
+                x + 10, y + 35,
+                text=text,
+                anchor="nw",
+                font=("Consolas", 9),
+                justify="left"
+            )
+
+            self.state_circles[i] = rect
+
+    def highlight_state(self, state_index):
+        for circle in self.state_circles.values():
+            self.dfa_canvas.itemconfig(circle, fill="lightgray")
+
+        if state_index in self.state_circles:
+            self.dfa_canvas.itemconfig(self.state_circles[state_index], fill="yellow")
+
     def build_parser(self):
         try:
             grammar_text = self.grammar_text.get("1.0", tk.END).strip()
@@ -117,6 +228,8 @@ class LR0App:
                 self.states,
                 self.transitions
             )
+
+            self.draw_dfa()
 
             self.output_text.delete("1.0", tk.END)
 
@@ -180,6 +293,10 @@ class LR0App:
                     row["action"]
                 ))
 
+            if steps:
+                # simple visual sync: highlight last seen state if available later
+                pass
+
             if accepted:
                 self.result_label.config(text="ACCEPTED", fg="green")
             else:
@@ -187,6 +304,35 @@ class LR0App:
 
         except Exception as e:
             messagebox.showerror("Error", str(e))
+
+    def get_box_edge_point(self, x1, y1, x2, y2, box_w, box_h):
+        cx1 = x1 + box_w / 2
+        cy1 = y1 + box_h / 2
+        cx2 = x2 + box_w / 2
+        cy2 = y2 + box_h / 2
+
+        dx = cx2 - cx1
+        dy = cy2 - cy1
+
+        if dx == 0 and dy == 0:
+            return cx1, cy1
+
+        if abs(dx) * box_h > abs(dy) * box_w:
+            if dx > 0:
+                px = x1 + box_w
+                py = cy1 + dy * (box_w / 2) / abs(dx)
+            else:
+                px = x1
+                py = cy1 - dy * (box_w / 2) / abs(dx)
+        else:
+            if dy > 0:
+                py = y1 + box_h
+                px = cx1 + dx * (box_h / 2) / abs(dy)
+            else:
+                py = y1
+                px = cx1 - dx * (box_h / 2) / abs(dy)
+
+        return px, py
 
 
 if __name__ == "__main__":
