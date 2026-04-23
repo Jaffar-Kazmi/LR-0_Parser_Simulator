@@ -151,12 +151,13 @@ class LR0App:
         box_w = 240
         box_h = 160
 
-        for i in range(len(self.states)):
-            row = i // 3
-            col = i % 3
-            x = start_x + col * gap_x
-            y = start_y + row * gap_y
-            self.state_positions[i] = (x, y)
+        if not self.state_positions:
+            for i in range(len(self.states)):
+                row = i // 3
+                col = i % 3
+                x = start_x + col * gap_x
+                y = start_y + row * gap_y
+                self.state_positions[i] = (x, y)
 
         for (from_state, symbol), to_state in self.transitions.items():
             x1, y1 = self.state_positions[from_state]
@@ -392,7 +393,7 @@ class LR0App:
     
         self.drag_data["x"] = event.x
         self.drag_data["y"] = event.y
-    
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = LR0App(root)
